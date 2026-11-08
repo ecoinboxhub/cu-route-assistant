@@ -80,6 +80,27 @@ ALLOWED_ORIGINS = tuple(
     if origin.strip()
 )
 
+#: Optional regular expression for origins that cannot be enumerated, such as
+#: Vercel preview deployments (`https://<project>-<hash>-<team>.vercel.app`).
+#: Empty by default. Deliberately a narrow expression rather than "*": the API
+#: has no authentication and an open policy would let any site use it as an
+#: oracle. Example:
+#:   CRA_ALLOWED_ORIGIN_REGEX=^https://cu-route-assistant-[a-z0-9-]+\.vercel\.app$
+ALLOWED_ORIGIN_REGEX = os.getenv("CRA_ALLOWED_ORIGIN_REGEX", "").strip()
+
+#: Trust ``X-Forwarded-For`` from the platform's reverse proxy. Render, Fly,
+#: Railway and similar hosts terminate TLS in front of the process, so every
+#: request arrives from one internal address unless the forwarded header is
+#: believed. Turning this on is what makes the rate limiter count people rather
+#: than the proxy. It is off by default because a direct-exposed process must
+#: not let a caller choose its own bucket.
+TRUST_PROXY = os.getenv("CRA_TRUST_PROXY", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
 #: How long the frontend waits for the API before giving up. Short on purpose: a
 #: user waiting on a page render should be told the service is unavailable
 #: quickly, and the frontend never invents an answer to fill the gap.

@@ -171,16 +171,27 @@ class TestCorsIsScopedNotOpen(unittest.TestCase):
         response = self.client.get("/api/routes", headers={"Origin": "https://evil.example"})
         self.assertNotIn("access-control-allow-origin", response.headers)
 
-    def test_the_combined_app_needs_no_cors(self) -> None:
-        """Same-origin is the default; a CORS header here would be a needless grant."""
+    def test_the_combined_app_is_reachable_from_the_static_frontend(self) -> None:
+        """The combined app is the Render deployment, and Vercel is a different origin.
+
+        It serves both the JSON API and the server-rendered pages, but the static
+        frontend that a browser loads is on Vercel. Without the allowlist the
+        widget's cross-origin call would be blocked by the same-origin policy.
+        """
         response = TestClient(app).get("/api/routes", headers={"Origin": WEB_PUBLIC_URL})
-        self.assertNotIn("access-control-allow-origin", response.headers)
+        self.assertEqual(
+            response.headers.get("access-control-allow-origin"), WEB_PUBLIC_URL
+        )
+        refused = TestClient(app).get(
+            "/api/routes", headers={"Origin": "https://evil.example"}
+        )
+        self.assertNotIn("access-control-allow-origin", refused.headers)
 
     def test_the_allowlist_is_not_a_wildcard(self) -> None:
         self.assertNotIn("*", ALLOWED_ORIGINS)
         self.assertTrue(ALLOWED_ORIGINS)
         for origin in ALLOWED_ORIGINS:
-            self.assertIn(str(EXPECTED_WEB_PORT), origin)
+            self.assertRegex(origin, r"^https?://[^/]+$")
 
 
 class TestForwardedClientAddressing(unittest.TestCase):

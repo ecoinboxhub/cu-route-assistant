@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+# The machine-readable API and the server-rendered fallback live on Render.

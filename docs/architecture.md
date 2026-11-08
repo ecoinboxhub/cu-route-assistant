@@ -68,7 +68,7 @@ record while doing it.
               │                       │       └────┬────┘
               ▼                       ▼            ▼
         ┌──────────────────────────────────────────────────┐
-        │  data/routing_table.json   data/corpus/*.md      │
+        │  backend/data/routing_table.json   backend/data/corpus/*.md │
         │  29 destinations           12 published pages    │
         │  12 unpublished topics     per-page provenance   │
         └──────────────────────────────────────────────────┘
@@ -145,7 +145,7 @@ A question about something other than this university is not a retrieval
 failure. "What is the weather in Abuja tomorrow?" was answered with the
 University's postal address and four irrelevant citations, because the word
 "Abuja" saturated the keyword score on the campus-address route. Two fixes, in
-`app/scope.py` and `app/router.py`:
+`backend/app/scope.py` and `backend/app/router.py`:
 
 - **Setting words carry no routing signal.** "Abuja", "campus", "university"
   appear on exactly one route each, so the rarity rule treated them as decisive.
@@ -266,7 +266,7 @@ to a reader.
 
 ## 6. Abstention thresholds
 
-Frozen in `app/config.py` as named constants, not tuned per query, so behaviour
+Frozen in `backend/app/config.py` as named constants, not tuned per query, so behaviour
 is auditable and any change is a version bump.
 
 | Constant | Value | Meaning |
@@ -303,9 +303,9 @@ see how current a fact is and whether the University published it once or
 publishes it inconsistently.
 
 It also makes the corpus refreshable without being rewritable. A snapshot is a
-directory in the same format; `app/refresh.py` classifies every page against the
-committed corpus and `scripts/refresh_corpus.py` writes the delta and a queue of
-pending decisions. Neither writes to `data/corpus`, so the only way a page
+directory in the same format; `backend/app/refresh.py` classifies every page against the
+committed corpus and `backend/scripts/refresh_corpus.py` writes the delta and a queue of
+pending decisions. Neither writes to `backend/data/corpus`, so the only way a page
 changes is a person editing it and committing, and the retrieval date is what
 records that the page was re-read at all.
 
@@ -375,7 +375,7 @@ error path:
 
 `/api/health` reports the active embedder, whether a model is configured, and
 whether the service is degraded. Evaluation results stamp the embedder name, the
-model identifier, and the routing-table version into `eval/results.json`, so a
+model identifier, and the routing-table version into `backend/eval/results.json`, so a
 degraded run cannot be presented as a full one — which is the failure mode that
 makes an evaluation worthless.
 

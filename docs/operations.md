@@ -14,7 +14,7 @@ Python 3.11 or later. No GPU. No database server. No paid licence.
 python -m venv .venv
 .venv\Scripts\activate            # Windows
 source .venv/bin/activate         # macOS / Linux
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 The first run downloads the sentence-embedding model (~90 MB) and caches it. If
@@ -33,7 +33,11 @@ The deployment is two processes. The API owns the assistant; the frontend owns
 the pages and calls the API for answers. Start the API first — the frontend
 serves its directory immediately but cannot answer until the API is up.
 
+From the repository root, enter the backend directory first: its paths are
+resolved relative to `backend/`.
+
 ```bash
+cd backend
 uvicorn app.api:backend_app  --host 0.0.0.0 --port 8003   # API
 uvicorn app.api:frontend_app --host 0.0.0.0 --port 5020   # frontend
 ```
@@ -57,6 +61,7 @@ For a single process on one port — useful in development, and still fully
 supported — use the combined application:
 
 ```bash
+cd backend
 uvicorn app.api:app --reload        # development, everything on 8000
 uvicorn app.api:app --host 0.0.0.0 --port 8000   # deployment, one process
 ```
@@ -119,7 +124,9 @@ Every one is optional. The system runs with none of them set.
 | `CRA_API_PUBLIC_URL` | `http://127.0.0.1:8003` | Where the frontend sends questions |
 | `CRA_WEB_PUBLIC_URL` | `http://127.0.0.1:5020` | The frontend's own public origin |
 | `CRA_ALLOWED_ORIGINS` | the two localhost web origins | Comma-separated CORS allowlist. **There is no `*` and adding one turns the API into a public oracle** |
-| `CRA_API_TIMEOUT_S` | `20` | How long the frontend waits before reporting the API unavailable |
+| `CRA_ALLOWED_ORIGIN_REGEX` | *(empty)* | Narrow regex for origins that cannot be enumerated, such as Vercel preview deployments |
+| `CRA_TRUST_PROXY` | `false` | Trust `X-Forwarded-For` from a platform reverse proxy such as Render. Required in the deployed configuration so the limiter counts visitors rather than the proxy |
+| `CRA_API_TIMEOUT_S` | `20` | How long a page waits before reporting the API unavailable |
 
 `.env` is git-ignored. On a free-tier host, set these in the platform's dashboard
 rather than in a file.
@@ -131,6 +138,8 @@ rather than in a file.
 Five checks, in order. Each one catches a failure the others do not.
 
 ```bash
+cd backend
+
 # 1. Is the evaluation evidence still valid?
 python scripts/verify_integrity.py
 
@@ -141,10 +150,10 @@ python -m unittest discover -s tests -t .          # expect 173 tests, OK
 python scripts/run_eval.py                         # expect 1.00 across all three
 
 # 4. Is the system honest about its own configuration?
-curl -s http://127.0.0.1:8003/api/health | python -m json.tool
+curl -s http://127.0.0.1:8000/api/health | python -m json.tool
 
 # 5. Does it work with JavaScript disabled?
-#    open http://127.0.0.1:5020/fallback, disable JS in devtools, reload
+#    open http://127.0.0.1:8000/fallback, disable JS in devtools, reload
 ```
 
 Step 4 deserves attention. `embedder.active` and `language_model.configured`
@@ -161,65 +170,99 @@ Sized for a free tier, because the running-cost ceiling is part of the project's
 constraints and a deployment that needs a credit card is a deployment that will
 not be running when it is demonstrated.
 
-### As a single container
+The deployed shape is:
 
-One container, two processes. This keeps the deployment to a single image on a
-free tier, which is the constraint that matters here. The API and the frontend
-share the image; only the API needs the model pre-downloaded, but the frontend
-still imports `requirements.txt`, so a slimmer frontend image is possible and is
-not worth the build complexity here.
+| Component | Host | What runs |
+|---|---|---|
+| `backend/` | Render (Python web service) | Combined `app.api:app`: JSON API plus the server-rendered no-JavaScript page |
+| `frontend/` | Vercel (static site) | `index.html`, `styles.css`, `app.js`, `config.js` |
 
-```dockerfile
-FROM python:3.12-slim
+### Backend on Render
 
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+The service is described by the committed [`render.yaml`](../render.yaml)
+Blueprint, so the deployment is a repository fact rather than a sequence of
+dashboard clicks.
 
-COPY app ./app
-COPY data ./data
+1. Open the Blueprint deploy link:
+   <https://render.com/deploy?repo=https://github.com/ecoinboxhub/cu-route-assistant>
+2. Approve the service. Render creates `cu-route-assistant-api`, installs
+   `backend/requirements.txt`, and starts `uvicorn app.api:app`.
+3. When prompted for the `sync: false` variables, set `CRA_ALLOWED_ORIGINS` to
+   the Vercel production origin (and `CRA_WEB_PUBLIC_URL` to the same value).
+   Until then, browser calls from the static site are refused by CORS.
+4. Confirm the service is live:
 
-# Pre-download the model at build time so the container starts without egress.
-RUN python -c "from sentence_transformers import SentenceTransformer; \
-               SentenceTransformer('all-MiniLM-L6-v2')"
+   ```bash
+   curl -s https://cu-route-assistant-api.onrender.com/api/health
+   ```
 
-EXPOSE 8003 5020
+The Blueprint pins Python 3.12, sets `CRA_EMBEDDER=lexical`, and sets
+`CRA_TRUST_PROXY=true`. The lexical embedder is a deliberate deployment choice:
+the neural path is a roughly 2 GB dependency for a measured two-point routing
+gain, and the lexical path is the documented, evaluated fallback. Flip to `auto`
+and `requirements-neural.txt` only if a larger instance is ever justified.
 
-# Process 1: the API, which owns the assistant.
-CMD ["uvicorn", "app.api:backend_app", "--host", "0.0.0.0", "--port", "8003"]
-```
+### Frontend on Vercel
 
-Run the second process alongside it, and set the public URLs so the frontend
-knows where the API is and the API knows which origins to allow:
+The frontend is static; there is no build step.
 
 ```bash
-CRA_API_PUBLIC_URL=https://api.example.org \
-CRA_WEB_PUBLIC_URL=https://example.org \
-CRA_ALLOWED_ORIGINS=https://example.org \
-uvicorn app.api:frontend_app --host 0.0.0.0 --port 5020
+cd frontend
+npx vercel@latest --prod
 ```
+
+Then set the API location in [`frontend/config.js`](../frontend/config.js) to the
+Render URL, and allow the Vercel origin on the API:
+
+```
+CRA_ALLOWED_ORIGINS=https://cu-route-assistant.vercel.app
+CRA_WEB_PUBLIC_URL=https://cu-route-assistant.vercel.app
+```
+
+`frontend/vercel.json` sets the security headers and lists the API origin in
+`connect-src`. When the API host changes, both that file and `config.js` need the
+new host, or the browser will block the widget's request.
 
 `CRA_ALLOWED_ORIGINS` is the one setting worth getting right. It is a list, it
 defaults to the two localhost web origins, and it has no wildcard: setting it to
 `*` would let any site on the internet read this API from a visitor's browser.
-
-Pre-downloading at build time matters more than it looks: a cold container that
-has to fetch 90 MB on first request will time out the health check and look
-broken to an orchestrator.
-
-### Free-tier hosts that work
-
-Render, Fly.io, Railway, and PythonAnywhere all run this shape. The
-requirements are: a Python 3.11+ runtime, an outbound HTTPS call to the model API
-if one is configured, and about 512 MB of memory for the neural embedder. Nothing
-else. No persistent volume is needed — the index is rebuilt at boot in about
-25 seconds and the corpus is in the image.
+For Vercel preview deployments, prefer a narrow `CRA_ALLOWED_ORIGIN_REGEX` over
+adding the wildcard.
 
 ### Health checks
 
 Point the platform at `GET /api/health`. It returns 200 with a JSON body
 describing the live configuration. The platform's own health check only needs the
 status code; the body is for humans and for the evidence pack.
+
+Render's free tier suspends an idle service and cold-starts it on the next
+request. The first request after a period of inactivity can take tens of seconds;
+that is the platform, not the application. The frontend reports a failed API call
+as an outage and keeps the question in the box rather than rendering it as a
+refusal.
+
+### Local containers
+
+The backend can be containerised with the same two-process image if a host other
+than Render is used. Only the combined shape is required for the deployed
+architecture:
+
+```dockerfile
+FROM python:3.12-slim
+
+WORKDIR /app
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend/app ./app
+COPY backend/data ./data
+
+EXPOSE 8000
+CMD ["uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+There is no model to pre-download in lexical mode, which is why this image starts
+without egress and stays small.
 
 ---
 
@@ -306,18 +349,24 @@ against without the system ever writing to its own corpus on its own.
 ## 6. Rollback
 
 Because the corpus and routing table are version-controlled and the service holds
-no state, rollback is a checkout and a restart.
+no state, rollback is a checkout and a redeploy.
 
 ```bash
 git log --oneline -5
 git checkout <last-good-commit>
-uvicorn app.api:backend_app  --host 0.0.0.0 --port 8003
-uvicorn app.api:frontend_app --host 0.0.0.0 --port 5020
+git push origin main          # Render auto-deploys the new commit
 ```
 
-Restart the API first, then the frontend: the frontend serves its directory
-straight away and would otherwise report `Service unavailable` for the ~25 seconds
-the API needs to load the embedder.
+For the frontend, redeploy the same commit:
+
+```bash
+cd frontend
+npx vercel@latest --prod
+```
+
+Alternatively, use Render's and Vercel's dashboards to roll back to a previous
+deployment. Render keeps the last successful deploy and can redeploy it without a
+commit.
 
 There is no migration to reverse and no database to reconcile, precisely because
 there is no database. A deployment that can be rolled back in one command is a

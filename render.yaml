@@ -1,0 +1,43 @@
+# Render Blueprint for the CU Route Assistant backend.
+#
+# The deployed shape is the combined application (`app.api:app`): the JSON API
+# under /api/* and the server-rendered, no-JavaScript experience on /. The
+# static frontend lives on Vercel and calls this service cross-origin.
+#
+# `CRA_EMBEDDER=lexical` is a deliberate deployment decision: the neural
+# embedder is a ~2 GB dependency for a measured 2-point routing gain. The
+# lexical path is the documented, evaluated fallback. Flip to `auto` and use
+# requirements-neural.txt if a larger instance is ever justified.
+services:
+  - type: web
+    name: cu-route-assistant-api
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn app.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: CRA_EMBEDDER
+        value: lexical
+      - key: CRA_TRUST_PROXY
+        value: "true"
+      - key: CRA_API_PUBLIC_URL
+        value: https://cu-route-assistant-api.onrender.com
+      # Set after the Vercel project exists. Until then the frontend's origin is
+      # not on the CORS allowlist and browser calls from it are refused.
+      - key: CRA_ALLOWED_ORIGINS
+        sync: false
+      - key: CRA_WEB_PUBLIC_URL
+        sync: false
+
+# Optional: uncomment if a language model is ever configured. The product is
+# fully functional without one, and leaves no outbound call to make.
+#   - key: CRA_LLM_PROVIDER
+#     sync: false
+#   - key: CRA_LLM_API_KEY
+#     sync: false

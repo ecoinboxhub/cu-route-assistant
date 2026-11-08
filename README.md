@@ -4,12 +4,37 @@ A grounded AI assistant that answers questions about Cosmopolitan University,
 Abuja, and routes people to the right office — using only what the University
 itself publishes, and citing every factual claim.
 
-The problem it solves is specific and evidenced. The University runs at least
-twelve separate web properties, publishes the same admissions email address
-differently in four of them, and serves no content at all to clients that do not
-execute JavaScript. An applicant asking "how much is tuition and who do I email"
-cannot get a reliable answer from the public web. This is a routing problem, and
-that is what the product solves.
+**Deployment targets**
+
+The repository is configured for Render (backend) and Vercel (frontend). Once
+the two services are created from [`render.yaml`](render.yaml) and
+`frontend/`, they answer at:
+
+| | URL |
+|---|---|
+| Web app | <https://cu-route-assistant.vercel.app> |
+| API | <https://cu-route-assistant-api.onrender.com> |
+| API health | <https://cu-route-assistant-api.onrender.com/api/health> |
+| No-JavaScript version | <https://cu-route-assistant-api.onrender.com/fallback> |
+| API documentation | <https://cu-route-assistant-api.onrender.com/docs> |
+
+The repository is a monorepo:
+
+- **`backend/`** — the FastAPI service, the curated corpus, the routing table,
+  the evaluation sets, and the test suite. Deployed to Render.
+- **`frontend/`** — a dependency-free static site. Deployed to Vercel.
+- **`docs/`** — architecture, operations, limitations, and attribution.
+- **`design/`** — the design system the interface is built from.
+
+---
+
+## The problem it solves
+
+The University runs at least twelve separate web properties, publishes the same
+admissions email address differently in four of them, and serves no content at
+all to clients that do not execute JavaScript. An applicant asking "how much is
+tuition and who do I email" cannot get a reliable answer from the public web.
+This is a routing problem, and that is what the product solves.
 
 ---
 
@@ -31,47 +56,95 @@ treats any invented amount as a critical failure.
 
 ## Quick start
 
-```bash
-git clone <repository-url>
-cd cu-route-assistant
-python -m venv .venv && .venv\Scripts\activate     # Windows
-# source .venv/bin/activate                          # macOS / Linux
-pip install -r requirements.txt
+Requires Python 3.11 or later. No GPU, no database server, no paid licence.
 
-# two processes: the API on 8003, the frontend on 5020
-uvicorn app.api:backend_app  --port 8003     # terminal 1
-uvicorn app.api:frontend_app --port 5020     # terminal 2
+```bash
+git clone https://github.com/ecoinboxhub/cu-route-assistant.git
+cd cu-route-assistant
+
+python -m venv .venv
+.venv\Scripts\activate                  # Windows
+# source .venv/bin/activate             # macOS / Linux
+
+pip install -r backend/requirements.txt
+
+cd backend
+uvicorn app.api:app --reload --port 8000
 ```
 
-Then open <http://127.0.0.1:5020/>. The API is at
-<http://127.0.0.1:8003/>; its health check is
-<http://127.0.0.1:8003/api/health>, which reports both ports so you can tell at a
-glance whether the pair came up as specified.
+Open <http://127.0.0.1:8000/>. The API health check is
+<http://127.0.0.1:8000/api/health>, which reports the active embedder, the
+degradation state, and the ports the process expects.
 
-For a single process instead, `uvicorn app.api:app --reload` serves everything on
-one port. That is still supported and is what the test suite exercises.
+`app.api:app` is the combined single-process app: the JSON API under `/api/*`
+and the server-rendered, no-JavaScript experience on `/`. It is the shape the
+test suite exercises and the shape deployed on Render.
 
-The split exists for one reason: the frontend does not need the assistant to
-render its pages, and loading it anyway costs about 57 MB of resident memory and
-roughly 25 seconds of cold start. Measured on this machine, the frontend process
-resides at 37.9 MB and answers immediately, while the API process resides at
-94.8 MB. A test asserts that serving a page imports neither `torch` nor
-`sentence_transformers`, so the saving cannot be lost quietly.
+The static frontend in `frontend/` is for Vercel. To run it locally against a
+local API, serve the directory with any static server and set the API location:
 
-That page works with JavaScript disabled. It is not a degraded error state — it
-carries the whole primary journey, and it is the interface the audit says most
-people need.
+```bash
+# from the repository root
+python -m http.server 5173 --directory frontend
+# open http://127.0.0.1:5173/?api=http://127.0.0.1:8000
+```
 
-Both `/` and `/fallback` answer questions as well as list them. The question box
-is a plain `GET` form, so it works with scripting off, and it calls the same
-`Assistant.ask` as the widget and the API. It used to be a directory you could
-browse but not ask, which made the sentence above half true; the regression
-suite now asserts that the answer rendered on the page is the answer the API
-returns for the same question, so the two cannot drift apart silently. When the
-API is unreachable the page says the service is unavailable and keeps the
-question in the box — it never renders a refusal in place of an outage, because
-"the service is down" and "the University does not publish this" are different
-claims and only one of them is true.
+### Two processes, one codebase
+
+The backend can also be split into an API process and a page-rendering process.
+That split is optional; it exists because the pages do not need the assistant to
+render, and loading it anyway costs memory and cold-start time. The deployed
+architecture uses one Render process plus the static Vercel site.
+
+```bash
+cd backend
+uvicorn app.api:backend_app  --port 8003   # JSON API only
+uvicorn app.api:frontend_app --port 5020   # pages and widget only
+```
+
+Both shapes share exactly one decision path: `Assistant.ask`. A test asserts
+that serving a page imports neither `torch` nor `sentence_transformers`, so the
+saving cannot be lost quietly.
+
+### No model download? It still runs.
+
+The neural embedder is a 90 MB download on first use. The deployment described
+in `render.yaml` runs in the documented lexical mode (`CRA_EMBEDDER=lexical`),
+which needs no model and reports `mode: lexical_fallback` in every response and
+in `/api/health`, so a degraded run can never be mistaken for a full one.
+Measured cost of that degradation: routing accuracy 0.98 against 1.00, and 7 ms
+median latency against 72 ms.
+
+The neural path remains available:
+
+```bash
+pip install -r backend/requirements-neural.txt
+cd backend
+CRA_EMBEDDER=auto uvicorn app.api:app --reload      # macOS / Linux
+$env:CRA_EMBEDDER="auto"; uvicorn app.api:app --reload   # Windows PowerShell
+```
+
+#### Use Python 3.12 for the neural embedder
+
+On Windows, the neural embedder needs PyTorch, and PyTorch does not currently
+load on Python 3.14. The oldest release published for `cp314` is 2.9.0, and
+2.9.0 introduced a DLL-initialisation failure on Windows that is still open at
+2.14.1 ([pytorch#166628](https://github.com/pytorch/pytorch/issues/166628),
+[#169429](https://github.com/pytorch/pytorch/issues/169429)). The fix everyone
+reports is 2.8.0, which has no `cp314` wheel.
+
+```bash
+py install 3.12
+py -3.12 -m venv .venv
+.venv\Scripts\pip install -r backend/requirements-neural.txt
+.venv\Scripts\pip install "torch==2.8.0" --index-url https://download.pytorch.org/whl/cpu
+```
+
+CI pins Python 3.12, which is why it is green — the pin is load-bearing.
+
+---
+
+## Routes
 
 | Route | What it is |
 |---|---|
@@ -81,79 +154,45 @@ claims and only one of them is true.
 | `/api/routes` | The routing table as data, so any page can render a directory without this service |
 | `/api/health` | Build state, active embedder, degradation status |
 | `/api/privacy` | Machine-readable statement of the data this service handles |
-| `/docs` | OpenAPI UI, on the API process only |
+| `/docs` | OpenAPI UI |
 
-`/docs` and `/openapi.json` are `404` on the frontend. They are FastAPI's defaults
-and the frontend mounts no routes, so they served a Swagger page listing zero
-endpoints — a page inviting a reader to call an API that lives on the other port.
-On the API process, `/` is a short notice naming the API, its docs, its health
-check and the frontend; it used to be `{"detail": "Not Found"}`, which is correct
-in the same way that a door with no handle is a door.
+On the dedicated API process, `/` is a short notice naming the API, its docs, its
+health check, and the frontend. The frontend process serves no API routes and
+returns `404` for `/docs`, `/redoc`, and `/openapi.json`: a Swagger page listing
+zero endpoints is a worse advertisement than a 404.
 
 ### Embedding the widget
 
 One script tag, on any page:
 
 ```html
-<script src="https://your-host/widget.js" defer></script>
+<script src="https://cu-route-assistant-api.onrender.com/widget.js" defer></script>
 ```
 
-That is the whole integration. The script loads its own stylesheet relative to its
-own URL, mounts inline if the page provides `<div id="cra-root">` and as a floating
-launcher otherwise, and posts to `window.CU_ROUTE_API` — served by this service as
-`/widget-config.js` so that `script-src` can stay `'self'` with no `unsafe-inline`.
-To point it at a different API host, set `window.CU_ROUTE_API` before the tag and
-add that origin to the CORS allow-list.
+That is the whole integration. The script loads its own stylesheet relative to
+its own URL, mounts inline if the page provides `<div id="cra-root">` and as a
+floating launcher otherwise, and posts to `window.CU_ROUTE_API` — served by the
+service as `/widget-config.js` so that `script-src` can stay `'self'` with no
+`unsafe-inline`. To point it at a different API host, set `window.CU_ROUTE_API`
+before the tag and add that origin to the CORS allow-list.
 
 The styling, the mounting, the keyboard behaviour and the failure message are all
-covered by `tests/widget_dom_check.mjs`, which runs the real file against a small
-fake DOM. A test that greps a script for a string proves the file was written, not
-that it works.
-
-### No model download? It still runs.
-
-The neural embedder is a 90 MB download on first use. Without it the system
-falls back to a pure-NumPy lexical embedder and reports `mode:
-lexical_fallback` in every response and in `/api/health`, so a degraded run can
-never be mistaken for a full one. Measured cost of that degradation: routing
-accuracy 0.98 against 1.00, and 7 ms median latency against 72 ms.
-
-#### Use Python 3.12 for the neural embedder
-
-On Windows, the neural embedder needs PyTorch, and PyTorch does not currently
-load on Python 3.14. The oldest release published for `cp314` is 2.9.0, and
-2.9.0 introduced a DLL-initialisation failure on Windows that is still open at
-2.14.1 ([pytorch#166628](https://github.com/pytorch/pytorch/issues/166628),
-[#169429](https://github.com/pytorch/pytorch/issues/169429)). The fix everyone
-reports is 2.8.0, which has no `cp314` wheel. So `pip install -r requirements.txt`
-on 3.14 installs a torch that cannot be imported, and the failure surfaces as an
-`OSError` about `c10.dll` rather than as anything about Python versions.
-
-```bash
-py install 3.12
-py -3.12 -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-.venv\Scripts\pip install "torch==2.8.0" --index-url https://download.pytorch.org/whl/cpu
-```
-
-That last line is the one that matters: `requirements.txt` deliberately does not
-pin a torch version, and without it `pip` picks 2.14. `verify.yml` pins 3.12,
-which is why CI is green — the pin is load-bearing and did not look it.
-
-Nothing is lost if you skip all of this. The lexical fallback is a designed state,
-not a broken one, and CI runs the whole suite in lexical mode on purpose.
+covered by `backend/tests/widget_dom_check.mjs`, which runs the real file
+against a small fake DOM. A test that greps a script for a string proves the file
+was written, not that it works.
 
 ---
 
 ## Verifying the claims
 
-The evaluation sets in `eval/` were committed **before the first line of
+The evaluation sets in `backend/eval/` were committed **before the first line of
 implementation**. That is the difference between a measurement and a
 demonstration, and it is checkable:
 
 ```bash
+cd backend
 python scripts/verify_integrity.py     # automated, also runs in CI
-git diff 8596c72 HEAD -- eval/*_set.json    # must print nothing
+git diff 8596c72 HEAD -- eval/*_set.json   # must print nothing
 ```
 
 The gate runs two independent checks, because one of them was found to be
@@ -161,16 +200,17 @@ insufficient. It verifies that the sets *predate* the implementation, **and**
 that they are still byte-identical to their state at the freeze commit. The
 ordering check alone passed on a test set whose expected answers had been
 rewritten in a later commit — the exact failure the gate exists to prevent. See
-`eval/CHANGELOG.md` §4, which includes the attack and the fix.
+`backend/eval/CHANGELOG.md` §4, which includes the attack and the fix.
 
 Changes made *in response to* observed failures are disclosed in
-`eval/CHANGELOG.md` with before/after numbers. The frozen cases themselves have
-never been edited, and the system was changed twice after the freeze.
+`backend/eval/CHANGELOG.md` with before/after numbers. The frozen cases
+themselves have never been edited, and the system was changed twice after the
+freeze.
 
 ### Results
 
 All figures from `python scripts/run_eval.py`, on the frozen sets, with the
-versions stamped into `eval/results.json`.
+versions stamped into `backend/eval/results.json`.
 
 | Measure | Set | Result | Threshold |
 |---|---|---|---|
@@ -212,13 +252,14 @@ The measurable value the semantic component adds is narrower and specific:
 A project brief claiming "AI is essential here" would not survive this table.
 The claim this repository makes is the narrower one that the evidence supports.
 
-### Two independent configurations
+### Running the evaluation
 
 ```bash
- python -m unittest discover -s tests -t .    # 173 tests
-python scripts/run_eval.py                   # neural embedder
-python scripts/run_eval.py --embedder lexical   # no model, degraded mode
-python scripts/run_eval.py --baseline-only   # keyword matcher alone
+cd backend
+python -m unittest discover -s tests -t .        # 173 tests
+python scripts/run_eval.py                       # neural embedder
+python scripts/run_eval.py --embedder lexical    # no model, degraded mode
+python scripts/run_eval.py --baseline-only       # keyword matcher alone
 ```
 
 ---
@@ -265,6 +306,7 @@ know, rather than dressing a weak match up as an answer.
 | Model optional | The product works at demo time with the model down; degradation is a designed state |
 | No auth, read-only, no accounts | Removes the entire credential and data-protection surface |
 | `all-MiniLM-L6-v2` | 22 MB of weights, CPU-only, no GPU, no paid licence |
+| Lexical mode in production | 0.98 routing accuracy without a 2 GB dependency or a 90 MB model download |
 
 ---
 
@@ -286,55 +328,76 @@ anyone reading a policy page.
 
 Security controls: input length limits, a fixed-window rate limiter, TLS in
 transit, a safety gate that refuses unauthorised-access and academic-integrity
-requests *before* retrieval, so a harmful request never becomes context a
-generator might paraphrase, and a set of response security headers —
+requests *before* retrieval, and a set of response security headers —
 `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`,
 `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security` — set by
-`app/api.py` on every response including errors.
+`backend/app/api.py` on every response including errors.
 
 The CSP is `script-src 'self'` with no `unsafe-inline` and no `unsafe-eval`,
 which holds because the widget builds its DOM with `createElement` and
 `textContent` rather than innerHTML. `style-src` does allow `'unsafe-inline'`, a
 real and accepted relaxation: `/fallback` carries its stylesheet in a `<style>`
-block so the no-JavaScript page needs no second request. TLS remains the
-deployment's responsibility, and `Strict-Transport-Security` is inert when served
-over plain HTTP.
+block so the no-JavaScript page needs no second request.
 
 Rejected questions are answered with a 422 that names the field, the location and
 the reason but **not the value**. Pydantic attaches the submitted input to every
 validation error it raises, so a 20 KB over-length question used to come back
 inside the error body — larger than any answer the service gives, and handed to
-whatever intermediary logged the response. The value is the part the caller
-already has.
+whatever intermediary logged the response.
+
+---
+
+## Deployment
+
+| Component | Host | Configuration |
+|---|---|---|
+| Backend (`backend/`) | Render | Blueprint in [`render.yaml`](render.yaml); `uvicorn app.api:app`; `CRA_EMBEDDER=lexical` |
+| Frontend (`frontend/`) | Vercel | Static site; no build step; API location in `frontend/config.js` |
+
+The Render service trusts the platform proxy (`CRA_TRUST_PROXY=true`) so the rate
+limiter counts visitors rather than the proxy, and it accepts browser requests
+only from the Vercel origin (`CRA_ALLOWED_ORIGINS`). There is no wildcard: the
+API has no authentication, and an open CORS policy would let any site use it as
+an oracle.
+
+Deployments are reproducible from the repository:
+
+```bash
+# Backend: commit and push, then approve the Render Blueprint.
+# https://render.com/deploy?repo=https://github.com/ecoinboxhub/cu-route-assistant
+
+# Frontend
+cd frontend
+npx vercel@latest --prod
+```
+
+See [`docs/operations.md`](docs/operations.md) for the full deployment,
+verification, monitoring, and rollback procedure.
 
 ---
 
 ## Layout
 
 ```
-app/
-  api.py          HTTP interface. Five things it deliberately does not do.
-  pipeline.py     The one decision path. Order of operations, and why.
-  router.py       Hybrid neural + keyword destination scoring.
-  retriever.py    Exact vector search, calibration, document expansion.
-  composer.py     Verbatim extraction; the optional model composer.
-  scope.py        Questions that are not about this university at all.
-  safety.py       Pre-retrieval refusal gates.
-  fallback.py     The complete no-JavaScript experience, server-rendered.
-  static/         The embeddable widget: one script tag, no framework.
-data/
-  corpus/         12 curated pages, with retrieval date and verification per page
-  routing_table.json   29 destinations, 12 unpublished topics, per-row provenance
-eval/             The three frozen sets, and the results stamped with versions
-scripts/          Build the index, run the evaluation, verify the integrity gate,
+backend/
+  app/            HTTP interface, pipeline, router, retriever, composer,
+                  scope, safety, server-rendered fallback, widget assets
+  data/
+    corpus/       12 curated pages, with retrieval date and verification per page
+    routing_table.json   29 destinations, 12 unpublished topics, per-row provenance
+  eval/           The three frozen sets, and the results stamped with versions
+  scripts/        Build the index, run the evaluation, verify the integrity gate,
                   and diff a proposed corpus refresh against the committed corpus
-tests/            173 tests. test_system.py needs no fixtures;
-                  test_http.py exercises the served interface;
-                  test_deployment.py checks the two-process split;
-                  test_refresh.py checks the corpus refresh never writes;
-                  test_wording.py checks the service is truthful about itself,
-                  and runs the widget against a fake DOM via node
+  tests/          173 tests, including the widget run against a fake DOM
+frontend/
+  index.html      Static, dependency-free frontend
+  styles.css
+  app.js
+  config.js       The API location
+  vercel.json     Security headers and the API origin in connect-src
 docs/             Architecture, operations, limitations, attribution
+design/           Design system
+render.yaml       Render Blueprint for the backend
 ```
 
 ---
@@ -347,17 +410,27 @@ docs/             Architecture, operations, limitations, attribution
 | [docs/operations.md](docs/operations.md) | Running it, deploying it, monitoring it, rolling it back |
 | [docs/known-limitations.md](docs/known-limitations.md) | What it cannot do, stated plainly |
 | [docs/attribution.md](docs/attribution.md) | Every library, model, and data source with its licence |
+| [design/DESIGN-SYSTEM.md](design/DESIGN-SYSTEM.md) | The interface's type, colour, spacing, and component rules |
 
 ---
 
 ## Project context
 
-An AI capstone by a team, for Cosmopolitan University, Abuja, under the
-AIPIL / IDEAS programme. The problem was chosen from an audit of the
-University's public web presence rather than assigned, and the scope was
-deliberately narrowed to a single user task — *find the correct route and contact
-for my matter* — because that task is demonstrably failing, solvable by a small
-team, and measurable.
+An AI capstone for Cosmopolitan University, Abuja, under the AIPIL / IDEAS
+programme. The problem was chosen from an audit of the University's public web
+presence rather than assigned, and the scope was deliberately narrowed to a
+single user task — *find the correct route and contact for my matter* — because
+that task is demonstrably failing, solvable by a small team, and measurable.
 
 This is a student project. It is not an official University service and does not
 speak for the institution.
+
+---
+
+## Licence
+
+The source code is released under the [MIT Licence](LICENSE). The quoted
+institutional content in `backend/data/corpus/` remains the property of
+Cosmopolitan University and is used descriptively, with attribution and citation,
+to answer questions about the University's own published pages. See
+[docs/attribution.md](docs/attribution.md) §4.

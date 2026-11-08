@@ -77,7 +77,7 @@ properties of this domain rather than general truths:
   baseline refuses anything it cannot match. It does so for the wrong reason, but
   the metric cannot tell the difference.
 
-The clearest demonstration of the first point is §2 of `eval/CHANGELOG.md`: the
+The clearest demonstration of the first point is §2 of `backend/eval/CHANGELOG.md`: the
 single most serious defect found in this project was a routing failure caused
 entirely by keyword statistics, and no embedding model would have caught it.
 
@@ -148,7 +148,7 @@ is written in the present tense of the code rather than of the plan.
 ### The corpus refresh pipeline
 
 The plan specifies four steps: snapshot, diff, delta report, and a human approval
-queue. Two are built. `scripts/refresh_corpus.py` compares a proposed snapshot of
+queue. Two are built. `backend/scripts/refresh_corpus.py` compares a proposed snapshot of
 curated pages against the committed corpus, classifies each page as added,
 removed, content changed, or metadata only, lists pages older than a configurable
 age, and writes a delta report and an approval queue in which every item is
@@ -158,7 +158,7 @@ age, and writes a delta report and an approval queue in which every item is
 purpose.** Snapshotting remains manual — a person reads a page and curates it to
 Markdown — because that curation is the judgement recorded in
 `docs/architecture.md` as the reason this is not a scraper. Approval is manual
-too: the pipeline is read-only by construction and never writes to `data/corpus`,
+too: the pipeline is read-only by construction and never writes to `backend/data/corpus`,
 so a human resolves each pending item by editing the corpus and committing. A
 pipeline that can silently rewrite what the assistant asserts is a pipeline that
 can make it wrong invisibly, so the write step is a person.
@@ -207,7 +207,10 @@ reverse proxy. An untrusted `X-Forwarded-For` is ignored rather than believed,
 which means a misconfigured reverse proxy degrades to a shared bucket rather than
 to no limit at all. That is the right way round.
 
-### The two processes have to be started together
+### The optional two-process split has to be started together
+
+The deployed architecture uses the combined `app.api:app` on Render, so this
+limitation applies only when the split is used deliberately.
 
 The frontend serves its directory immediately and does not need the API to do
 that, so a frontend that is up with no API behind it looks healthy. Its health is
@@ -240,8 +243,8 @@ can be hosted independently today.
 | A published contact detail changes | Medium | A refresh run against a fresh snapshot surfaces it for approval. Until then, the `verification` field marks rows where the University publishes conflicting values |
 | The embedder model is withdrawn upstream | Low | The lexical fallback is a complete substitute at 0.98 routing accuracy |
 | A client data owner never materialises | High | The routing table is built from published evidence and every row carries its provenance. A destination that cannot be confirmed against a published source is left out rather than included with a caveat: an unverifiable email address is worse than an absent one, because the user cannot tell the difference. Where a destination is compiled by cross-referencing rather than stated on one page, it is marked `derived` and the caveat is shown |
-| The routing table's vocabulary drifts from how users actually ask | Medium | Evidenced. A paraphrased lockout question ("the machine will not let me in") matched nothing, because the table was written in institutional register. Fixing it was vocabulary work, not model work, and it was disclosed as post-freeze tuning with before/after numbers in `eval/CHANGELOG.md` §1 — and the same gap will appear for questions nobody has tested |
-| The integrity gate is weakened or removed to make a build pass | Low | It is two independent checks, it exits nonzero, and CI runs it. It was also **found broken during development and silently passing on a tampered test set**; see `eval/CHANGELOG.md` §4. A gate is only worth what its ability to fail is worth, so the fix was demonstrated against a real attack rather than asserted. Anyone changing it should re-run that attack |
+| The routing table's vocabulary drifts from how users actually ask | Medium | Evidenced. A paraphrased lockout question ("the machine will not let me in") matched nothing, because the table was written in institutional register. Fixing it was vocabulary work, not model work, and it was disclosed as post-freeze tuning with before/after numbers in `backend/eval/CHANGELOG.md` §1 — and the same gap will appear for questions nobody has tested |
+| The integrity gate is weakened or removed to make a build pass | Low | It is two independent checks, it exits nonzero, and CI runs it. It was also **found broken during development and silently passing on a tampered test set**; see `backend/eval/CHANGELOG.md` §4. A gate is only worth what its ability to fail is worth, so the fix was demonstrated against a real attack rather than asserted. Anyone changing it should re-run that attack |
 
 That last row is the most important one, and it has now been observed rather than
 predicted. The 85 frozen cases are a sample of one organisation's real questions,
@@ -262,7 +265,7 @@ Stated so the numbers are not read as more than they are.
 | Not covered | Why |
 |---|---|
 | Real users | The 85 cases are authored, not observed. They are frozen and pre-registered, which protects them from being fitted to the result, but it does not make them representative |
-| Phrasing outside the frozen vocabulary | The abstention gate scores match terms, and the 85 cases happened to use wording close to the ones the catalogue knew. Live testing found twelve real fee and entry-requirement questions — *acceptance fee*, *in instalments*, *still open*, *credits* — answered confidently where the frozen score was 1.0000. The fixes are disclosed in `eval/CHANGELOG.md` §5, and the scores did not move, which is exactly why they could not have been relied on to find it |
+| Phrasing outside the frozen vocabulary | The abstention gate scores match terms, and the 85 cases happened to use wording close to the ones the catalogue knew. Live testing found twelve real fee and entry-requirement questions — *acceptance fee*, *in instalments*, *still open*, *credits* — answered confidently where the frozen score was 1.0000. The fixes are disclosed in `backend/eval/CHANGELOG.md` §5, and the scores did not move, which is exactly why they could not have been relied on to find it |
 | Task-completion improvement | The plan specifies 10 testers × 3 routing tasks, with and without the assistant. Not yet run. Until it is, the claim "this is faster than the current website" is unevidenced |
 | Screen-reader and keyboard testing | The design targets WCAG AA and semantic HTML, and the no-JavaScript path exists specifically because the audit found the University's own site excludes these users. Formal testing with actual assistive technology has not been performed |
 | Adversarial input at scale | The safety gate has test cases. It has not been fuzzed, and the read-only no-auth design limits what an attacker can reach regardless |

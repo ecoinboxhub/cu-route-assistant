@@ -61,7 +61,7 @@ must be re-reviewed before the model is re-enabled.
 Every one is MIT or BSD-3-Clause: permissive, patent-granting in the BSD case,
 with no copyleft obligation on this repository.
 
-**No test framework is a dependency.** The 56-test suite runs on `unittest` from
+**No test framework is a dependency.** The 173-test suite runs on `unittest` from
 the standard library, so it works on a cohort member's machine with no install
 step.
 
@@ -70,7 +70,7 @@ step.
 ## 4. Source material
 
 The corpus is **12 pages published by Cosmopolitan University**, curated to
-Markdown by hand. Every page is listed in `data/corpus/` with front-matter
+Markdown by hand. Every page is listed in `backend/data/corpus/` with front-matter
 recording its source URL, retrieval date, and verification status.
 
 | Source URL | Retrieved | Content type |
@@ -134,31 +134,31 @@ has would be a lie told in the one document whose entire job is accuracy.
 
 | Claimed in the design | Actually used | Why |
 |---|---|---|
-| ONNX Runtime for embeddings | `sentence-transformers`, which brings PyTorch | The ONNX path is specified but not implemented. ONNX remains the better choice for a CPU-only deployment — roughly 50 MB of runtime against roughly 2 GB. `requirements.txt` states what is actually installed. See `docs/known-limitations.md` §5 |
+| ONNX Runtime for embeddings | `sentence-transformers`, which brings PyTorch | The ONNX path is specified but not implemented. ONNX remains the better choice for a CPU-only deployment — roughly 50 MB of runtime against roughly 2 GB. `backend/requirements.txt` states what is actually installed. See `docs/known-limitations.md` §5 |
 
 ---
 
 ## 7. AI tools used in producing this work
 
 Disclosed as required by the project guidelines. Any generative AI used as a
-learning or production aid is named here, its output was verified, and the team
+learning or production aid is named here, its output was verified, and the author
 remains accountable for the result.
 
 | Tool | Used for | Verification |
 |---|---|---|
-| Claude (Anthropic), via a coding assistant | Code generation, debugging, test authoring, documentation drafting | Every claim is checked against a run: all evaluation figures come from `scripts/run_eval.py`, all test results from `python -m unittest discover`. Documentation claims about behaviour were read from the source or confirmed by execution |
+| Claude (Anthropic), via a coding assistant | Code generation, debugging, test authoring, documentation drafting | Every claim is checked against a run: all evaluation figures come from `backend/scripts/run_eval.py`, all test results from `python -m unittest discover`. Documentation claims about behaviour were read from the source or confirmed by execution |
 
 **What this means for the evidence in this repository:**
 
 - No AI-generated output is presented as independently authored research.
 - **No AI-generated result is submitted as a test outcome that was not actually
-  run.** Every number in the README and in `eval/results.json` comes from an
+  run.** Every number in the README and in `backend/eval/results.json` comes from an
   execution of the frozen evaluation sets against the built system, with the
   prompt version, corpus state, and model identifier stamped into the results
   file.
 - Defects found during development were fixed and the full evaluation re-run,
   rather than individual results being adjusted. The frozen sets were never edited
-  to make a case pass; `scripts/verify_integrity.py` enforces that they predate
+  to make a case pass; `backend/scripts/verify_integrity.py` enforces that they predate
   the implementation, and it runs in CI.
 - Where an AI assistant was wrong, the correction is documented in the code
   comments and the limitations file rather than quietly removed.
@@ -170,10 +170,10 @@ remains accountable for the result.
 To reproduce the dependency inventory on your own machine:
 
 ```bash
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 pip list --format=freeze
 ```
 
 The versions this project was developed and measured against are recorded in
-`eval/results.json` on every run, so a result can always be traced to the
+`backend/eval/results.json` on every run, so a result can always be traced to the
 configuration that produced it.

@@ -1,0 +1,11 @@
+# Optional neural embedder.
+#
+# Installs sentence-transformers and its PyTorch dependency. Use this for the
+# full configuration, local evaluation of the neural numbers, and the CI
+# "neural" job. It is not needed to run or deploy the product: the lexical
+# embedder is a complete substitute at 0.98 routing accuracy.
+#
+# On Python 3.14 / Windows, install torch 2.8.0 from the CPU wheel index; see
+# docs/operations.md.
+-r requirements.txt
+sentence-transformers>=3.3

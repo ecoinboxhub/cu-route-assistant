@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CU Route Assistant — Cosmopolitan University, Abuja</title>
+    <meta
+      name="description"
+      content="A grounded information and routing assistant for Cosmopolitan University, Abuja. Ask a question, get a cited answer and the correct office to contact."
+    />
+    <meta name="theme-color" content="#0b5d3b" />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./config.js"></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <a class="brand" href="./" aria-label="CU Route Assistant home">
+          <span class="brand-mark" aria-hidden="true">CU</span>
+          <span class="brand-copy">
+            <strong>Cosmopolitan University</strong>
+            <small>Abuja · Route Assistant</small>
+          </span>
+        </a>
+
+        <nav class="site-nav" aria-label="Primary">
+          <a href="#ask">Ask</a>
+          <a href="#directory">Directory</a>
+          <a href="#unpublished">Not published</a>
+          <a href="#about">About</a>
+        </nav>
+
+        <p class="service-status" id="service-status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="status-text">Checking service…</span>
+        </p>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="ask">
+        <div class="wrap hero-inner">
+          <p class="eyebrow">Grounded institutional routing</p>
+          <h1>Find the right office.<span>Not the runaround.</span></h1>
+          <p class="lede">
+            Ask in plain language. Every answer is drawn from what Cosmopolitan
+            University publishes, cites the page it came from, and says so when
+            the University has not published an answer.
+          </p>
+
+          <form class="ask-card" id="ask-form" novalidate>
+            <label class="ask-label" for="question">
+              What do you need help with?
+            </label>
+            <div class="ask-row">
+              <textarea
+                id="question"
+                name="question"
+                rows="2"
+                maxlength="500"
+                placeholder="e.g. I want to apply for a postgraduate programme. Where do I start?"
+                autocomplete="off"
+                spellcheck="true"
+                required
+              ></textarea>
+              <button class="btn btn-primary" type="submit" id="ask-button">
+                Ask the assistant
+              </button>
+            </div>
+
+            <div class="ask-meta">
+              <span id="char-count" aria-hidden="true">0 / 500</span>
+              <span>No account · no cookies · read-only</span>
+            </div>
+
+            <div class="samples" aria-label="Example questions">
+              <button type="button" class="chip" data-question="How do I apply for undergraduate admission?">
+                How do I apply?
+              </button>
+              <button type="button" class="chip" data-question="How much is school fees?">
+                How much is school fees?
+              </button>
+              <button type="button" class="chip" data-question="I forgot my portal password">
+                I forgot my portal password
+              </button>
+              <button type="button" class="chip" data-question="Where is the library and what are its opening hours?">
+                Library and opening hours
+              </button>
+            </div>
+          </form>
+
+          <noscript>
+            <div class="notice notice-warn">
+              <strong>JavaScript is switched off.</strong>
+              The question box needs scripting, but the full directory below is
+              plain HTML. For the complete server-rendered experience — including
+              asking questions without JavaScript — open the
+              <a id="noscript-fallback" href="https://cu-route-assistant-api.onrender.com/fallback">no-JavaScript version</a>.
+            </div>
+          </noscript>
+
+          <dl class="stats" id="stats">
+            <div><dt>Destinations</dt><dd id="stat-routes">29</dd></div>
+            <div><dt>Published pages cited</dt><dd id="stat-pages">12</dd></div>
+            <div><dt>Unpublished topics declared</dt><dd id="stat-topics">12</dd></div>
+            <div><dt>Answers carrying a citation</dt><dd>Every one</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="section answer-section" id="answer-section" hidden>
+        <div class="wrap wrap-narrow">
+          <article class="answer-card" aria-live="polite" aria-atomic="false">
+            <header class="answer-head">
+              <span class="badge" id="answer-badge">Answer</span>
+              <span class="answer-mode" id="answer-mode"></span>
+            </header>
+
+            <p class="answer-question" id="answer-question"></p>
+            <div class="answer-body" id="answer-body"></div>
+
+            <div id="answer-primary"></div>
+            <div id="answer-alternatives"></div>
+            <div id="answer-citations"></div>
+
+            <p class="disclaimer" id="answer-disclaimer"></p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="directory">
+        <div class="wrap">
+          <header class="section-head">
+            <p class="eyebrow">Reconciled directory</p>
+            <h2>Every published route, in one place</h2>
+            <p>
+              One table instead of twelve websites. Where the University
+              publishes conflicting contact details, both are shown rather than
+              silently resolved.
+            </p>
+          </header>
+
+          <div class="directory-tools">
+            <div class="search-field">
+              <label for="directory-search">Search the directory</label>
+              <input
+                id="directory-search"
+                type="search"
+                placeholder="Search by office, service, email or phone…"
+                autocomplete="off"
+              />
+            </div>
+            <div class="category-filters" id="category-filters" aria-label="Filter by category"></div>
+          </div>
+
+          <p class="muted" id="directory-status" aria-live="polite">
+            Loading the routing table…
+          </p>
+          <div class="directory-grid" id="directory-list"></div>
+        </div>
+      </section>
+
+      <section class="section section-tint" id="unpublished">
+        <div class="wrap">
+          <header class="section-head">
+            <p class="eyebrow">Honest gaps</p>
+            <h2>What the University does not publish</h2>
+            <p>
+              Some questions cannot be answered from the public web. These are
+              declared in advance, with the office that owns the missing fact, so
+              the assistant declines instead of inventing a figure.
+            </p>
+          </header>
+          <div class="unpublished-list" id="unpublished-list"></div>
+        </div>
+      </section>
+
+      <section class="section" id="about">
+        <div class="wrap wrap-narrow prose">
+          <p class="eyebrow">About this service</p>
+          <h2>Built to cite, not to guess</h2>
+          <p>
+            The CU Route Assistant answers only from pages Cosmopolitan
+            University publishes. Its default composer extracts sentences
+            verbatim from cited sources, so it cannot invent a fee, a deadline,
+            or a contact detail. When the University has not published
+            something, it says so and routes you to the office that owns the
+            answer. It never submits an application, changes a record, or calls
+            a live portal.
+          </p>
+
+          <div class="about-grid">
+            <article class="about-card">
+              <h3>Privacy</h3>
+              <p>
+                No accounts, no cookies, no analytics, no query logging, no
+                training on user questions. The statement is machine-readable at
+                <a id="privacy-link" href="https://cu-route-assistant-api.onrender.com/api/privacy">/api/privacy</a>.
+              </p>
+            </article>
+            <article class="about-card">
+              <h3>Grounding</h3>
+              <p>
+                Every factual claim carries a citation with the page title,
+                retrieval date, and verification status. Conflicting published
+                values are disclosed. Unpublished topics are named.
+              </p>
+            </article>
+            <article class="about-card">
+              <h3>Accessibility</h3>
+              <p>
+                Keyboard operable, semantic HTML, high-contrast type, and a
+                complete server-rendered version at
+                <a id="fallback-link" href="https://cu-route-assistant-api.onrender.com/fallback">/fallback</a>
+                for clients without JavaScript.
+              </p>
+            </article>
+            <article class="about-card">
+              <h3>Status and source</h3>
+              <p>
+                Live configuration is published at
+                <a id="health-link" href="https://cu-route-assistant-api.onrender.com/api/health">/api/health</a>.
+                This is a student capstone project, not an official University
+                service, and it does not speak for the institution.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap footer-inner">
+        <p>
+          <strong>CU Route Assistant</strong> · Cosmopolitan University, Abuja
+        </p>
+        <p class="muted">
+          Check time-sensitive facts such as fees and deadlines directly with the
+          University before you rely on them.
+        </p>
+      </div>
+    </footer>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

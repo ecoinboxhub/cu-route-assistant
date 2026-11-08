@@ -54,9 +54,11 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import (
     ALLOWED_ORIGINS,
+    ALLOWED_ORIGIN_REGEX,
     API_PORT,
     API_PUBLIC_URL,
     API_TIMEOUT_S,
+    TRUST_PROXY,
     WEB_PORT,
     WEB_PUBLIC_URL,
     settings,
@@ -94,7 +96,11 @@ _TRUSTED_PROXIES = {"127.0.0.1", "::1", "localhost", "testclient"}
 
 def _client_key(request: Request) -> str:
     peer = request.client.host if request.client else "unknown"
-    if peer in _TRUSTED_PROXIES:
+    # A platform proxy (Render, Fly, Railway) forwards the real client address.
+    # ``CRA_TRUST_PROXY`` is the explicit acknowledgement that this process sits
+    # behind such a proxy; loopback peers are always trusted because that is the
+    # local two-process deployment.
+    if TRUST_PROXY or peer in _TRUSTED_PROXIES:
         forwarded = request.headers.get("x-forwarded-for", "")
         if forwarded:
             return forwarded.split(",")[0].strip()
@@ -292,10 +298,11 @@ def create_app(
     # The frontend is only a different origin from the API when the two are
     # separate processes, so the allowlist is populated on the API alone and the
     # combined app needs no CORS at all.
-    if cors_origins:
+    if cors_origins or ALLOWED_ORIGIN_REGEX:
         application.add_middleware(
             CORSMiddleware,
             allow_origins=list(cors_origins),
+            allow_origin_regex=ALLOWED_ORIGIN_REGEX or None,
             allow_methods=["GET", "POST"],
             allow_headers=["Content-Type"],
             max_age=600,
@@ -602,8 +609,10 @@ def _mount_pages(application: FastAPI, *, ask_locally: bool, api_base_url: str) 
     application.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
-#: Both surfaces in one process: the default, and what the test suite exercises.
-app = create_app()
+#: Both surfaces in one process: the default, what the test suite exercises, and
+#: the shape deployed on Render. CORS is enabled here because the Vercel
+#: frontend calls this origin from a different host.
+app = create_app(cors_origins=ALLOWED_ORIGINS)
 
 #: The JSON API alone, on ``CRA_API_PORT`` (8003). The only process that loads
 #: the embedder.

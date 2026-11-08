@@ -27,6 +27,13 @@ That is precisely the failure this gate was built to prevent, and it passed. A
 gate that cannot fail is worse than no gate, because it is read as reassurance.
 The ordering check answers "was this written first?"; only the content check
 answers "is it still what was written first?".
+
+Repository history note
+-----------------------
+The project was later reorganised into ``backend/`` and ``frontend/``. The
+checks therefore look at both the current path and the pre-reorganisation path,
+because a pathspec that names only one of them silently starts the clock at the
+move, which would make the frozen sets look newer than the implementation.
 """
 
 from __future__ import annotations
@@ -37,10 +44,26 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FROZEN = ["eval/gold_set.json", "eval/paraphrase_set.json", "eval/out_of_scope_set.json"]
+
+#: Paths relative to the repository root, current and legacy, for each frozen
+#: file. ``:(top)`` makes a pathspec independent of the current working
+#: directory, which is ``backend/`` because that is where the script lives.
+FROZEN = [
+    "eval/gold_set.json",
+    "eval/paraphrase_set.json",
+    "eval/out_of_scope_set.json",
+]
+LEGACY_FROZEN = list(FROZEN)
+CURRENT_FROZEN = [f"backend/{path}" for path in FROZEN]
 
 #: Paths whose first appearance marks the start of implementation.
 IMPL_GLOBS = ["app/**", "scripts/run_eval.py", "scripts/build_index.py", "data/**"]
+LEGACY_IMPL = list(IMPL_GLOBS)
+CURRENT_IMPL = [f"backend/{path}" for path in IMPL_GLOBS]
+
+
+def _pathspecs(paths: list[str]) -> list[str]:
+    return [f":(top){path}" for path in paths]
 
 
 def _log(*args: str) -> str:
@@ -50,9 +73,17 @@ def _log(*args: str) -> str:
 
 
 def _first_commit_for(paths: list[str]) -> tuple[str | None, str | None]:
-    """Earliest commit timestamp touching any of the given paths."""
+    """Earliest commit timestamp touching any of the given top-level paths."""
     output = subprocess.run(
-        ["git", "log", "--reverse", "--format=%H|%ad", "--date=iso", "--", *paths],
+        [
+            "git",
+            "log",
+            "--reverse",
+            "--format=%H|%ad",
+            "--date=iso",
+            "--",
+            *_pathspecs(paths),
+        ],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -65,21 +96,70 @@ def _first_commit_for(paths: list[str]) -> tuple[str | None, str | None]:
     return commit, when
 
 
-def _drift_from(commit: str) -> str:
-    """Diffstat for the frozen sets between ``commit`` and the working tree.
+def _blob_at(commit: str, candidates: list[str]) -> bytes | None:
+    """File content at ``commit``, trying the current then the legacy path."""
+    for path in candidates:
+        result = subprocess.run(
+            ["git", "show", f"{commit}:{path}"],
+            cwd=ROOT,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            return result.stdout
+    return None
 
-    Returned as a diffstat, empty when the frozen sets are untouched. Compared
-    against the working tree rather than HEAD so that an uncommitted edit is
-    caught too: a tampered file that has not been committed yet is still a
-    tampered file, and a gate that inspects only history misses it entirely.
+
+def _blob_hash_at(commit: str, candidates: list[str]) -> str | None:
+    """The object id of a file at ``commit``, trying current then legacy paths."""
+    for path in candidates:
+        result = subprocess.run(
+            ["git", "rev-parse", f"{commit}:{path}"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    return None
+
+
+def _working_hash(path: Path) -> str:
+    """The object id git would store for a working-tree file.
+
+    Hashing through git rather than comparing raw bytes matters on Windows:
+    ``core.autocrlf`` converts CRLF to LF on staging, so the working tree is not
+    byte-identical to the blob even when the content is unchanged. The gate is
+    about the repository content, which is what the blob hash captures.
     """
-    output = subprocess.run(
-        ["git", "diff", "--stat", commit, "--", *FROZEN],
+    return subprocess.run(
+        ["git", "hash-object", str(path)],
         cwd=ROOT,
         capture_output=True,
         text=True,
+        check=True,
     ).stdout.strip()
-    return output
+
+
+def _drift_from(commit: str) -> list[str]:
+    """Describe frozen files whose content differs from the freeze commit.
+
+    Compared against the working tree rather than HEAD so that an uncommitted
+    edit is caught too: a tampered file that has not been committed yet is still
+    a tampered file, and a gate that inspects only history misses it entirely.
+    """
+    drift: list[str] = []
+    for current, legacy in zip(FROZEN, LEGACY_FROZEN):
+        frozen = _blob_hash_at(commit, [f"backend/{current}", legacy])
+        if frozen is None:
+            drift.append(f"{current}: not present at {commit[:10]}")
+            continue
+        working_path = ROOT / current
+        if not working_path.exists():
+            drift.append(f"{current}: missing from the working tree")
+            continue
+        if _working_hash(working_path) != frozen:
+            drift.append(f"{current}: differs from {commit[:10]}")
+    return drift
 
 
 def main() -> int:
@@ -92,12 +172,12 @@ def main() -> int:
     print("CU Route Assistant — evaluation integrity check")
     print("=" * 66)
 
-    eval_commit, eval_when = _first_commit_for(FROZEN)
+    eval_commit, eval_when = _first_commit_for(LEGACY_FROZEN + CURRENT_FROZEN)
     if not eval_commit:
         print("FAIL  evaluation sets have never been committed")
         return 1
 
-    impl_commit, impl_when = _first_commit_for(IMPL_GLOBS)
+    impl_commit, impl_when = _first_commit_for(LEGACY_IMPL + CURRENT_IMPL)
     if not impl_commit:
         print("INFO  no implementation commit found yet; the gate cannot be failed")
         print(f"  evaluation frozen at {eval_when}  ({eval_commit[:10]})")
@@ -128,14 +208,16 @@ def main() -> int:
     if drift:
         print("  [2/2] content    : FAIL - the frozen sets have changed since they")
         print("                      were first committed:")
-        for line in drift.splitlines():
+        for line in drift:
             print(f"                        {line}")
         print("                      They are expected to be byte-identical to")
         print(f"                      {eval_commit[:10]}. A test set edited after the")
         print("                      fact measures nothing, however good the score.")
-        print("                      Restore it with:")
-        print(f"                        git checkout {eval_commit[:10]} -- "
-              + " ".join(FROZEN))
+        print("                      The sets lived at these paths before the")
+        print("                      repository was reorganised, so restore each one")
+        print("                      from the freeze commit:")
+        for current, legacy in zip(FROZEN, LEGACY_FROZEN):
+            print(f"                        git show {eval_commit[:10]}:{legacy} > {current}")
         failures += 1
     else:
         print("  [2/2] content    : PASS - the sets are byte-identical to the freeze")
