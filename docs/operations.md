@@ -180,39 +180,45 @@ The deployed shape is:
 ### Backend on Render
 
 The service is described by the committed [`render.yaml`](../render.yaml)
-Blueprint, so the deployment is a repository fact rather than a sequence of
-dashboard clicks.
+configuration, so the deployment is a repository fact rather than a sequence of
+dashboard clicks. It exists as `cu-route-assistant-api` and auto-deploys from
+`main`; every push to the backend is a new deploy.
 
-1. Open the Blueprint deploy link:
-   <https://render.com/deploy?repo=https://github.com/ecoinboxhub/cu-route-assistant>
-2. Approve the service. Render creates `cu-route-assistant-api`, installs
-   `backend/requirements.txt`, and starts `uvicorn app.api:app`.
-3. When prompted for the `sync: false` variables, set `CRA_ALLOWED_ORIGINS` to
-   the Vercel production origin (and `CRA_WEB_PUBLIC_URL` to the same value).
-   Until then, browser calls from the static site are refused by CORS.
-4. Confirm the service is live:
+To recreate it from scratch, open the Blueprint deploy link:
 
-   ```bash
-   curl -s https://cu-route-assistant-api.onrender.com/api/health
-   ```
+<https://render.com/deploy?repo=https://github.com/ecoinboxhub/cu-route-assistant>
 
-The Blueprint pins Python 3.12, sets `CRA_EMBEDDER=lexical`, and sets
+Approve the service, and when prompted for the `sync: false` variables set
+`CRA_ALLOWED_ORIGINS` to the Vercel production origin (and `CRA_WEB_PUBLIC_URL`
+to the same value). Until then, browser calls from the static site are refused
+by CORS. Confirm the service is live:
+
+```bash
+curl -s https://cu-route-assistant-api.onrender.com/api/health
+```
+
+The configuration pins Python 3.12, sets `CRA_EMBEDDER=lexical`, and sets
 `CRA_TRUST_PROXY=true`. The lexical embedder is a deliberate deployment choice:
 the neural path is a roughly 2 GB dependency for a measured two-point routing
 gain, and the lexical path is the documented, evaluated fallback. Flip to `auto`
 and `requirements-neural.txt` only if a larger instance is ever justified.
 
+The live service's `CRA_ALLOWED_ORIGINS` and `CRA_WEB_PUBLIC_URL` are both
+`https://cu-route-assistant.vercel.app`; changing the frontend host means
+updating both in the Render dashboard and in [`frontend/config.js`](../frontend/config.js).
+
 ### Frontend on Vercel
 
-The frontend is static; there is no build step.
+The frontend is static; there is no build step. The Vercel project is
+Git-connected to `main`, so a push deploys it. To deploy by hand:
 
 ```bash
 cd frontend
 npx vercel@latest --prod
 ```
 
-Then set the API location in [`frontend/config.js`](../frontend/config.js) to the
-Render URL, and allow the Vercel origin on the API:
+The API location is in [`frontend/config.js`](../frontend/config.js). The live
+API allows the Vercel origin:
 
 ```
 CRA_ALLOWED_ORIGINS=https://cu-route-assistant.vercel.app

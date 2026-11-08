@@ -4,25 +4,20 @@ A grounded AI assistant that answers questions about Cosmopolitan University,
 Abuja, and routes people to the right office — using only what the University
 itself publishes, and citing every factual claim.
 
-**Deployment status**
+**Live service**
 
-The static frontend is live. The API is not deployed yet, so the web app
-currently reports "Service offline" and cannot answer questions until the
-Render service is approved. The no-JavaScript fallback is served by the API,
-so it is unavailable too.
+Both halves are deployed. The web app calls the API cross-origin; the API
+answers from the lexical embedder configured in [`render.yaml`](render.yaml).
+Render's free tier suspends an idle service, so the first request after a quiet
+period can take tens of seconds.
 
-| | URL | Status |
-|---|---|---|
-| Web app | <https://cu-route-assistant.vercel.app> | Live (Vercel) |
-| API | <https://cu-route-assistant-api.onrender.com> | Pending Render approval |
-| API health | <https://cu-route-assistant-api.onrender.com/api/health> | Pending |
-| No-JavaScript version | <https://cu-route-assistant-api.onrender.com/fallback> | Pending |
-| API documentation | <https://cu-route-assistant-api.onrender.com/docs> | Pending |
-
-To bring the API up, approve the Blueprint at
-<https://render.com/deploy?repo=https://github.com/ecoinboxhub/cu-route-assistant>
-and set `CRA_ALLOWED_ORIGINS` and `CRA_WEB_PUBLIC_URL` to the Vercel origin.
-[`docs/operations.md`](docs/operations.md) has the full procedure.
+| | URL |
+|---|---|
+| Web app | <https://cu-route-assistant.vercel.app> |
+| API | <https://cu-route-assistant-api.onrender.com> |
+| API health | <https://cu-route-assistant-api.onrender.com/api/health> |
+| No-JavaScript version | <https://cu-route-assistant-api.onrender.com/fallback> |
+| API documentation | <https://cu-route-assistant-api.onrender.com/docs> |
 
 The repository is a monorepo:
 
@@ -366,14 +361,15 @@ only from the Vercel origin (`CRA_ALLOWED_ORIGINS`). There is no wildcard: the
 API has no authentication, and an open CORS policy would let any site use it as
 an oracle.
 
-Deployments are reproducible from the repository:
+The Render service was created from the committed `render.yaml` configuration
+and deploys on every push to `main`. Recreating it from scratch is still one
+click:
+
+<https://render.com/deploy?repo=https://github.com/ecoinboxhub/cu-route-assistant>
+
+The frontend is Git-connected to the same branch. To deploy it by hand:
 
 ```bash
-# Backend: approve the Render Blueprint once; every later push to main deploys.
-# https://render.com/deploy?repo=https://github.com/ecoinboxhub/cu-route-assistant
-
-# Frontend: Vercel is Git-connected to main, so a push deploys it.
-# To deploy by hand instead:
 cd frontend
 npx vercel@latest --prod
 ```
