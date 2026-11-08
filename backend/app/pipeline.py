@@ -564,15 +564,19 @@ class Assistant:
             citations=citations,
             trace=trace,
             disclaimer=settings.disclaimer,
-            mode=draft.mode,
+            mode=self._mode(),
             version=settings.version,
         )
 
     def _mode(self) -> str:
-        if self.llm.available:
-            return "full"
+        # The most severe degradation wins, because the field exists to stop a
+        # degraded answer being read as a full one. A lexical embedder is a
+        # bigger caveat than a missing language model, and a model cannot make
+        # the lexical retrieval path neural.
         if self.retriever.embedder.name == "tfidf-lexical":
             return "lexical_fallback"
+        if self.llm.available:
+            return "full"
         return "retrieval_only"
 
     # -------------------------------------------------------------- health

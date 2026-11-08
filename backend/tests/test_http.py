@@ -63,6 +63,27 @@ class TestHttpInterface(unittest.TestCase):
             body["mode"], {"full", "retrieval_only", "lexical_fallback"}
         )
 
+    def test_the_answer_mode_agrees_with_the_active_configuration(self) -> None:
+        """A degraded answer must not report itself as a full one.
+
+        The field is the machine-readable half of the README's claim that the
+        lexical deployment "reports mode: lexical_fallback in every response".
+        It used to be copied from the composer, so a lexical run with no
+        language model reported ``retrieval_only`` and the embedder degradation
+        disappeared from the answer envelope even though /api/health still
+        reported it.
+        """
+        health = self.client.get("/api/health").json()
+        body = self.client.post(
+            "/api/ask", json={"question": "Where is the library?"}
+        ).json()
+        if health["embedder"]["active"] == "tfidf-lexical":
+            self.assertEqual(body["mode"], "lexical_fallback")
+        elif not health["language_model"]["configured"]:
+            self.assertEqual(body["mode"], "retrieval_only")
+        else:
+            self.assertEqual(body["mode"], "full")
+
     def test_every_citation_carries_its_provenance(self) -> None:
         """A citation a user cannot check is decoration, not evidence."""
         body = self.client.post(
