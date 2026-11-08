@@ -4,19 +4,25 @@ A grounded AI assistant that answers questions about Cosmopolitan University,
 Abuja, and routes people to the right office — using only what the University
 itself publishes, and citing every factual claim.
 
-**Deployment targets**
+**Deployment status**
 
-The repository is configured for Render (backend) and Vercel (frontend). Once
-the two services are created from [`render.yaml`](render.yaml) and
-`frontend/`, they answer at:
+The static frontend is live. The API is not deployed yet, so the web app
+currently reports "Service offline" and cannot answer questions until the
+Render service is approved. The no-JavaScript fallback is served by the API,
+so it is unavailable too.
 
-| | URL |
-|---|---|
-| Web app | <https://cu-route-assistant.vercel.app> |
-| API | <https://cu-route-assistant-api.onrender.com> |
-| API health | <https://cu-route-assistant-api.onrender.com/api/health> |
-| No-JavaScript version | <https://cu-route-assistant-api.onrender.com/fallback> |
-| API documentation | <https://cu-route-assistant-api.onrender.com/docs> |
+| | URL | Status |
+|---|---|---|
+| Web app | <https://cu-route-assistant.vercel.app> | Live (Vercel) |
+| API | <https://cu-route-assistant-api.onrender.com> | Pending Render approval |
+| API health | <https://cu-route-assistant-api.onrender.com/api/health> | Pending |
+| No-JavaScript version | <https://cu-route-assistant-api.onrender.com/fallback> | Pending |
+| API documentation | <https://cu-route-assistant-api.onrender.com/docs> | Pending |
+
+To bring the API up, approve the Blueprint at
+<https://render.com/deploy?repo=https://github.com/ecoinboxhub/cu-route-assistant>
+and set `CRA_ALLOWED_ORIGINS` and `CRA_WEB_PUBLIC_URL` to the Vercel origin.
+[`docs/operations.md`](docs/operations.md) has the full procedure.
 
 The repository is a monorepo:
 
@@ -363,10 +369,11 @@ an oracle.
 Deployments are reproducible from the repository:
 
 ```bash
-# Backend: commit and push, then approve the Render Blueprint.
+# Backend: approve the Render Blueprint once; every later push to main deploys.
 # https://render.com/deploy?repo=https://github.com/ecoinboxhub/cu-route-assistant
 
-# Frontend
+# Frontend: Vercel is Git-connected to main, so a push deploys it.
+# To deploy by hand instead:
 cd frontend
 npx vercel@latest --prod
 ```
