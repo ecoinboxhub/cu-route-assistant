@@ -362,8 +362,8 @@ API has no authentication, and an open CORS policy would let any site use it as
 an oracle.
 
 The Render service was created from the committed `render.yaml` configuration
-and deploys on every push to `main`. Recreating it from scratch is still one
-click:
+and deploys on every push that changes files under `backend/`. Recreating it
+from scratch is still one click:
 
 <https://render.com/deploy?repo=https://github.com/ecoinboxhub/cu-route-assistant>
 

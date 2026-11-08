@@ -181,8 +181,9 @@ The deployed shape is:
 
 The service is described by the committed [`render.yaml`](../render.yaml)
 configuration, so the deployment is a repository fact rather than a sequence of
-dashboard clicks. It exists as `cu-route-assistant-api` and auto-deploys from
-`main`; every push to the backend is a new deploy.
+dashboard clicks. It exists as `cu-route-assistant-api` and auto-deploys when a
+push changes files under `backend/`; docs-only commits outside the root
+directory do not rebuild it.
 
 To recreate it from scratch, open the Blueprint deploy link:
 
